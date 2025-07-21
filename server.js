@@ -9,75 +9,84 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// HEX形式のCookie名
-const USER_COOKIE = "55736572"; // "User"
-const PASS_COOKIE = "70617373776f7264"; // "password"
+const COOKIE_USER = "55736572";
+const COOKIE_PASS = "70617373776f7264";
 const USERS_FILE = path.join(__dirname, "users.json");
 
-// ユーザーデータ読み込み関数
+// ユーザー読み込み
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return {};
   try {
     return JSON.parse(fs.readFileSync(USERS_FILE));
-  } catch (e) {
-    console.error("users.json読み込み失敗:", e);
+  } catch {
     return {};
   }
 }
-
-// ユーザーデータ保存関数
-function saveUsers(data) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2));
+// 保存
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
 }
 
-// ハッシュ関数（SHA256, hex出力）
-function hash(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
+// ハッシュ化
+function hash(val) {
+  return crypto.createHash("sha256").update(val).digest("hex");
 }
 
-// トップページ配信
+// ルート
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ログイン処理
+// ログイン
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
   const users = loadUsers();
-  const h_user = hash(username);
-  const h_pass = hash(password);
+  const hUser = hash(username);
+  const hPass = hash(password);
 
-  if (!users[h_user] || users[h_user] !== h_pass) {
-    return res.status(401).json({ success: false, message: "ユーザー名またはパスワードが違います" });
+  if (!users[hUser] || users[hUser].password !== hPass) {
+    return res.status(401).json({ success: false, message: "ユーザー名かパスワードが違う" });
   }
-
-  // Cookie用のHEX形式キーとハッシュを返す
-  res.json({
-    success: true,
-    userHex: USER_COOKIE,
-    passHex: PASS_COOKIE,
-    userHash: h_user,
-    passHash: h_pass,
-  });
+  res.json({ success: true, message: "ログイン成功", username });
 });
 
-// 新規登録処理
-app.post("/register", (req, res) => {
-  const { username, password } = req.body;
+// 自動ログイン
+app.post("/auto-login", (req, res) => {
+  const { userHash, passHash } = req.body;
   const users = loadUsers();
-  const h_user = hash(username);
 
-  if (users[h_user]) {
-    return res.status(409).json({ success: false, message: "このユーザー名はすでに登録されています" });
+  for (const [hUser, info] of Object.entries(users)) {
+    if (hUser === userHash && info.password === passHash) {
+      return res.json({ success: true, username: "ユーザー" });
+    }
+  }
+  res.status(401).json({ success: false });
+});
+
+// 新規登録
+app.post("/register", (req, res) => {
+  const { username, password, secret } = req.body;
+  if (!username || !password || !secret) {
+    return res.status(400).json({ success: false, message: "すべての項目を入力してください" });
   }
 
-  users[h_user] = hash(password);
+  const users = loadUsers();
+  const hUser = hash(username);
+
+  if (users[hUser]) {
+    return res.status(409).json({ success: false, message: "そのユーザー名はすでに存在します" });
+  }
+
+  users[hUser] = {
+    password: hash(password),
+    secret: secret,
+  };
+
   saveUsers(users);
 
-  res.json({ success: true, message: "登録が完了しました" });
+  res.json({ success: true, message: "登録成功" });
 });
 
-// サーバー起動
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
