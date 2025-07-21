@@ -33,6 +33,11 @@ function eraseCookie(name) {
   document.cookie = `${name}=; max-age=0; path=/`;
 }
 
+// jsOTPのインスタンス生成（CDNで読み込んでいる想定）
+const totp = new jsOTP.totp();
+
+let timerId = null;
+
 // UI切替
 showRegisterBtn.addEventListener("click", () => {
   loginForm.style.display = "none";
@@ -47,6 +52,25 @@ cancelRegisterBtn.addEventListener("click", () => {
   codeDisplay.style.display = "none";
   showRegisterBtn.style.display = "inline-block";
 });
+
+// 2FAコード表示＋残秒数表示
+function show2FACode(secret, username) {
+  if (timerId) clearInterval(timerId);
+
+  loginForm.style.display = "none";
+  registerForm.style.display = "none";
+  showRegisterBtn.style.display = "none";
+  codeDisplay.style.display = "block";
+
+  function updateCode() {
+    const code = totp.getOtp(secret);
+    const remaining = 30 - (Math.floor(Date.now() / 1000) % 30);
+    codeDisplay.textContent = `ようこそ ${username} さん。2FAコード: ${code} （残り ${remaining} 秒）`;
+  }
+
+  updateCode();
+  timerId = setInterval(updateCode, 1000);
+}
 
 // ログイン処理
 loginButton.addEventListener("click", async () => {
@@ -72,7 +96,8 @@ loginButton.addEventListener("click", async () => {
     if (res.ok && data.success) {
       setCookie(COOKIE_USER, userHash, 1200);
       setCookie(COOKIE_PASS, passHash, 1200);
-      show2FACode(username);
+      // ここでサーバーからsecretを受け取る想定
+      show2FACode(data.secret, username);
     } else {
       alert(data.message || "ログインに失敗しました");
     }
@@ -113,15 +138,6 @@ registerButton.addEventListener("click", async () => {
   }
 });
 
-// 2FAコード表示（仮）
-function show2FACode(username) {
-  loginForm.style.display = "none";
-  registerForm.style.display = "none";
-  showRegisterBtn.style.display = "none";
-  codeDisplay.style.display = "block";
-  codeDisplay.textContent = `ようこそ ${username} さん。2FAコード表示は未実装。`;
-}
-
 // 自動ログイン処理
 window.addEventListener("DOMContentLoaded", async () => {
   const userHash = getCookie(COOKIE_USER);
@@ -136,7 +152,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        show2FACode(data.username || "ユーザー");
+        // サーバーからsecretを受け取る想定があればここで
+        show2FACode(data.secret || "SECRET_MISSING", data.username || "ユーザー");
       } else {
         eraseCookie(COOKIE_USER);
         eraseCookie(COOKIE_PASS);
