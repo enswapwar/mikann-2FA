@@ -1,7 +1,6 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -22,14 +21,10 @@ function loadUsers() {
     return {};
   }
 }
+
 // 保存
 function saveUsers(users) {
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-}
-
-// ハッシュ化
-function hash(val) {
-  return crypto.createHash("sha256").update(val).digest("hex");
 }
 
 // ルート
@@ -37,48 +32,46 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ログイン
+// ログイン（ハッシュ済みの値を受け取る前提）
 app.post("/login", (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body; // すでにSHA-256ハッシュ済み
   const users = loadUsers();
-  const hUser = hash(username);
-  const hPass = hash(password);
 
-  if (!users[hUser] || users[hUser].password !== hPass) {
+  if (!users[username] || users[username].password !== password) {
     return res.status(401).json({ success: false, message: "ユーザー名かパスワードが違う" });
   }
-  res.json({ success: true, message: "ログイン成功", username });
+
+  res.json({ success: true, message: "ログイン成功", username, secret: users[username].secret });
 });
 
-// 自動ログイン
+// 自動ログイン（Cookie内のハッシュと比較）
 app.post("/auto-login", (req, res) => {
   const { userHash, passHash } = req.body;
   const users = loadUsers();
 
-  for (const [hUser, info] of Object.entries(users)) {
-    if (hUser === userHash && info.password === passHash) {
-      return res.json({ success: true, username: "ユーザー" });
-    }
+  if (users[userHash] && users[userHash].password === passHash) {
+    return res.json({ success: true, username: "ユーザー", secret: users[userHash].secret });
   }
+
   res.status(401).json({ success: false });
 });
 
-// 新規登録
+// 新規登録（ハッシュ済みの値をそのまま保存）
 app.post("/register", (req, res) => {
   const { username, password, secret } = req.body;
+
   if (!username || !password || !secret) {
     return res.status(400).json({ success: false, message: "すべての項目を入力してください" });
   }
 
   const users = loadUsers();
-  const hUser = hash(username);
 
-  if (users[hUser]) {
+  if (users[username]) {
     return res.status(409).json({ success: false, message: "そのユーザー名はすでに存在します" });
   }
 
-  users[hUser] = {
-    password: hash(password),
+  users[username] = {
+    password: password, // 既にハッシュ済み
     secret: secret,
   };
 
