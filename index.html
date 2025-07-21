@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>2FA Generator Login</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.5/dist/js.cookie.min.js"></script>
+</head>
+<body>
+
+  <button id="register-btn">新規登録</button>
+
+  <div class="login-box visible" id="login-box">
+    <input type="text" id="username" placeholder="ユーザー名">
+    <input type="password" id="password" placeholder="パスワード">
+    <button id="login-btn">ログイン</button>
+  </div>
+
+  <div class="code-box" id="code-box">
+    <h1>2FA CODE:</h1>
+    <div id="code">------</div>
+    <div id="countdown">残り: -- 秒</div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
