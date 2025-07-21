@@ -124,7 +124,14 @@ loginButton.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      alert("レスポンスがJSONではありません: " + text);
+      return;
+    }
 
     if (res.ok && data.success) {
       setCookie(COOKIE_USER, userHash, 1200);
@@ -134,7 +141,7 @@ loginButton.addEventListener("click", async () => {
       alert(data.message || "ログインに失敗しました");
     }
   } catch (e) {
-    alert("通信エラー");
+    alert("fetchエラー: " + e.message);
   }
 });
 
@@ -155,7 +162,14 @@ registerButton.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password, secret }),
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      alert("レスポンスがJSONではありません: " + text);
+      return;
+    }
 
     if (res.ok && data.success) {
       alert("登録完了しました。ログインしてください。");
@@ -166,7 +180,7 @@ registerButton.addEventListener("click", async () => {
       alert(data.message || "登録に失敗しました");
     }
   } catch (e) {
-    alert("通信エラー");
+    alert("fetchエラー: " + e.message);
   }
 });
 
@@ -181,7 +195,15 @@ window.addEventListener("DOMContentLoaded", async () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userHash, passHash }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        eraseCookie(COOKIE_USER);
+        eraseCookie(COOKIE_PASS);
+        return;
+      }
 
       if (res.ok && data.success) {
         show2FACode(data.secret || "SECRET_MISSING", data.username || "ユーザー");
@@ -189,7 +211,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         eraseCookie(COOKIE_USER);
         eraseCookie(COOKIE_PASS);
       }
-    } catch {
+    } catch (e) {
       eraseCookie(COOKIE_USER);
       eraseCookie(COOKIE_PASS);
     }
