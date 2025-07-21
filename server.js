@@ -1,72 +1,83 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const cookieParser = require('cookie-parser');
-
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(cookieParser());
 
-// ユーザー情報のJSONファイル
-const USERS_FILE = path.join(__dirname, 'users.json');
+// HEX形式のCookie名
+const USER_COOKIE = "55736572"; // "User"
+const PASS_COOKIE = "70617373776f7264"; // "password"
+const USERS_FILE = path.join(__dirname, "users.json");
 
-// ユーザーデータの読み込み
+// ユーザーデータ読み込み関数
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return {};
-  return JSON.parse(fs.readFileSync(USERS_FILE));
+  try {
+    return JSON.parse(fs.readFileSync(USERS_FILE));
+  } catch (e) {
+    console.error("users.json読み込み失敗:", e);
+    return {};
+  }
 }
 
-// ハッシュ化関数（SHA256）
-function hash(str) {
-  return crypto.createHash('sha256').update(str).digest('hex');
+// ユーザーデータ保存関数
+function saveUsers(data) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ログインAPI
-app.post('/api/login', (req, res) => {
+// ハッシュ関数（SHA256, hex出力）
+function hash(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+// トップページ配信
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// ログイン処理
+app.post("/login", (req, res) => {
   const { username, password } = req.body;
   const users = loadUsers();
-  const hashedUser = hash(username);
-  const hashedPass = hash(password);
+  const h_user = hash(username);
+  const h_pass = hash(password);
 
-  if (users[hashedUser] && users[hashedUser].password === hashedPass) {
-    res.cookie('55736572', hashedUser, { maxAge: 20 * 60 * 1000 }); // User
-    res.cookie('70617373776f7264', hashedPass, { maxAge: 20 * 60 * 1000 }); // Password
-    res.status(200).json({ success: true });
-  } else {
-    res.status(401).json({ success: false, message: 'ユーザー名またはパスワードが間違っています。' });
+  if (!users[h_user] || users[h_user] !== h_pass) {
+    return res.status(401).json({ success: false, message: "ユーザー名またはパスワードが違います" });
   }
+
+  // Cookie用のHEX形式キーとハッシュを返す
+  res.json({
+    success: true,
+    userHex: USER_COOKIE,
+    passHex: PASS_COOKIE,
+    userHash: h_user,
+    passHash: h_pass,
+  });
 });
 
-// 登録API
-app.post('/api/register', (req, res) => {
-  const { username, password, secret } = req.body;
+// 新規登録処理
+app.post("/register", (req, res) => {
+  const { username, password } = req.body;
   const users = loadUsers();
-  const hashedUser = hash(username);
-  const hashedPass = hash(password);
+  const h_user = hash(username);
 
-  if (users[hashedUser]) {
-    return res.status(409).json({ success: false, message: 'すでに登録されています。' });
+  if (users[h_user]) {
+    return res.status(409).json({ success: false, message: "このユーザー名はすでに登録されています" });
   }
 
-  users[hashedUser] = {
-    password: hashedPass,
-    secret
-  };
+  users[h_user] = hash(password);
+  saveUsers(users);
 
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  res.status(201).json({ success: true });
+  res.json({ success: true, message: "登録が完了しました" });
 });
 
-// index.htmlをルートで返す
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+// サーバー起動
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
