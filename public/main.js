@@ -1,98 +1,149 @@
-// DOM取得
-const loginForm = document.getElementById("login-form");
-const registerForm = document.getElementById("register-form");
-const codeDisplay = document.getElementById("code-display");
-
-// クッキー名定義（hex表記）
-const cookieUserKey = "55736572"; // User
-const cookiePassKey = "70617373776f7264"; // password
-
-// ハッシュ化関数
+// ハッシュ関数（SHA-256）
 async function hashText(text) {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
     .map(b => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-// クッキー読み取り
+// DOM Elements
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+const codeDisplay = document.getElementById("code-display");
+const showRegisterBtn = document.getElementById("show-register");
+const cancelRegisterBtn = document.getElementById("cancel-register");
+const loginButton = document.getElementById("login-button");
+const registerButton = document.getElementById("register-button");
+
+// Cookie名（HEX）
+const COOKIE_USER = "55736572";
+const COOKIE_PASS = "70617373776f7264";
+
+// Cookie操作
+function setCookie(name, value, maxAgeSec) {
+  document.cookie = `${name}=${value}; max-age=${maxAgeSec}; path=/`;
+}
 function getCookie(name) {
   const match = document.cookie.match(new RegExp(name + "=([^;]+)"));
   return match ? match[1] : null;
 }
+function eraseCookie(name) {
+  document.cookie = `${name}=; max-age=0; path=/`;
+}
 
-// 自動ログイン試行
-window.addEventListener("DOMContentLoaded", async () => {
-  const userHash = getCookie(cookieUserKey);
-  const passHash = getCookie(cookiePassKey);
-  if (userHash && passHash) {
-    try {
-      const res = await fetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userHash, passHash })
-      });
-      const data = await res.json();
-      if (data.code) {
-        loginForm.style.display = "none";
-        registerForm.style.display = "none";
-        codeDisplay.textContent = `2FAコード: ${data.code}`;
-      }
-    } catch (e) {
-      console.error("自動ログイン失敗:", e);
-    }
-  }
+// UI切替
+showRegisterBtn.addEventListener("click", () => {
+  loginForm.style.display = "none";
+  registerForm.style.display = "block";
+  codeDisplay.style.display = "none";
+  showRegisterBtn.style.display = "none";
+});
+
+cancelRegisterBtn.addEventListener("click", () => {
+  registerForm.style.display = "none";
+  loginForm.style.display = "block";
+  codeDisplay.style.display = "none";
+  showRegisterBtn.style.display = "inline-block";
 });
 
 // ログイン処理
-loginForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const username = document.getElementById("login-username").value;
-  const password = document.getElementById("login-password").value;
+loginButton.addEventListener("click", async () => {
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value.trim();
+
+  if (!username || !password) {
+    alert("ユーザー名とパスワードを入力してください");
+    return;
+  }
+
   const userHash = await hashText(username);
   const passHash = await hashText(password);
 
-  const res = await fetch("/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userHash, passHash })
-  });
-  const data = await res.json();
+  try {
+    const res = await fetch("/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
 
-  if (data.code) {
-    document.cookie = `${cookieUserKey}=${userHash}; max-age=1200`;
-    document.cookie = `${cookiePassKey}=${passHash}; max-age=1200`;
-    loginForm.style.display = "none";
-    registerForm.style.display = "none";
-    codeDisplay.textContent = `2FAコード: ${data.code}`;
-  } else {
-    alert("ユーザー名またはパスワードが違います。");
+    if (res.ok && data.success) {
+      setCookie(COOKIE_USER, userHash, 1200);
+      setCookie(COOKIE_PASS, passHash, 1200);
+      show2FACode(username);
+    } else {
+      alert(data.message || "ログインに失敗しました");
+    }
+  } catch (e) {
+    alert("通信エラー");
   }
 });
 
 // 新規登録処理
-registerForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const username = document.getElementById("register-username").value;
-  const password = document.getElementById("register-password").value;
-  const secret = document.getElementById("register-secret").value;
+registerButton.addEventListener("click", async () => {
+  const username = document.getElementById("register-username").value.trim();
+  const password = document.getElementById("register-password").value.trim();
+  const secret = document.getElementById("register-secret").value.trim();
 
-  const userHash = await hashText(username);
-  const passHash = await hashText(password);
+  if (!username || !password || !secret) {
+    alert("全ての項目を入力してください");
+    return;
+  }
 
-  const res = await fetch("/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userHash, passHash, secret })
-  });
+  try {
+    const res = await fetch("/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, secret }),
+    });
+    const data = await res.json();
 
-  const data = await res.json();
+    if (res.ok && data.success) {
+      alert("登録完了しました。ログインしてください。");
+      registerForm.style.display = "none";
+      loginForm.style.display = "block";
+      showRegisterBtn.style.display = "inline-block";
+    } else {
+      alert(data.message || "登録に失敗しました");
+    }
+  } catch (e) {
+    alert("通信エラー");
+  }
+});
 
-  if (data.success) {
-    alert("登録完了。ログインしてください。");
-  } else {
-    alert("登録に失敗しました。既に存在するユーザーかもしれません。");
+// 2FAコード表示（仮）
+function show2FACode(username) {
+  loginForm.style.display = "none";
+  registerForm.style.display = "none";
+  showRegisterBtn.style.display = "none";
+  codeDisplay.style.display = "block";
+  codeDisplay.textContent = `ようこそ ${username} さん。2FAコード表示は未実装。`;
+}
+
+// 自動ログイン処理
+window.addEventListener("DOMContentLoaded", async () => {
+  const userHash = getCookie(COOKIE_USER);
+  const passHash = getCookie(COOKIE_PASS);
+  if (userHash && passHash) {
+    try {
+      const res = await fetch("/auto-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userHash, passHash }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        show2FACode(data.username || "ユーザー");
+      } else {
+        eraseCookie(COOKIE_USER);
+        eraseCookie(COOKIE_PASS);
+      }
+    } catch {
+      eraseCookie(COOKIE_USER);
+      eraseCookie(COOKIE_PASS);
+    }
   }
 });
