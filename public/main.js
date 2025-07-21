@@ -86,7 +86,7 @@ cancelRegisterBtn.addEventListener("click", () => {
   showRegisterBtn.style.display = "inline-block";
 });
 
-// 2FAコード表示＋残秒数表示
+// 2FAコード表示
 function show2FACode(secret, username) {
   if (timerId) clearInterval(timerId);
 
@@ -105,7 +105,7 @@ function show2FACode(secret, username) {
   timerId = setInterval(updateCode, 1000);
 }
 
-// ログイン処理
+// ログイン処理（ハッシュして送る）
 loginButton.addEventListener("click", async () => {
   const username = document.getElementById("login-username").value.trim();
   const password = document.getElementById("login-password").value.trim();
@@ -122,16 +122,9 @@ loginButton.addEventListener("click", async () => {
     const res = await fetch("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: userHash, password: passHash }),
     });
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      alert("レスポンスがJSONではありません: " + text);
-      return;
-    }
+    const data = await res.json();
 
     if (res.ok && data.success) {
       setCookie(COOKIE_USER, userHash, 1200);
@@ -145,7 +138,7 @@ loginButton.addEventListener("click", async () => {
   }
 });
 
-// 新規登録処理
+// 新規登録処理（ハッシュして送る）
 registerButton.addEventListener("click", async () => {
   const username = document.getElementById("register-username").value.trim();
   const password = document.getElementById("register-password").value.trim();
@@ -156,20 +149,16 @@ registerButton.addEventListener("click", async () => {
     return;
   }
 
+  const userHash = await hashText(username);
+  const passHash = await hashText(password);
+
   try {
     const res = await fetch("/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, secret }),
+      body: JSON.stringify({ username: userHash, password: passHash, secret }),
     });
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      alert("レスポンスがJSONではありません: " + text);
-      return;
-    }
+    const data = await res.json();
 
     if (res.ok && data.success) {
       alert("登録完了しました。ログインしてください。");
@@ -184,7 +173,7 @@ registerButton.addEventListener("click", async () => {
   }
 });
 
-// 自動ログイン処理
+// 自動ログイン処理（Cookieから）
 window.addEventListener("DOMContentLoaded", async () => {
   const userHash = getCookie(COOKIE_USER);
   const passHash = getCookie(COOKIE_PASS);
@@ -195,15 +184,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userHash, passHash }),
       });
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        eraseCookie(COOKIE_USER);
-        eraseCookie(COOKIE_PASS);
-        return;
-      }
+      const data = await res.json();
 
       if (res.ok && data.success) {
         show2FACode(data.secret || "SECRET_MISSING", data.username || "ユーザー");
