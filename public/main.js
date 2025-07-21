@@ -1,79 +1,98 @@
-const COOKIE_USER = "55736572";
-const COOKIE_PASS = "70617373776f7264";
+// DOM取得
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+const codeDisplay = document.getElementById("code-display");
 
-let secret = "";
-let intervalID = null;
+// クッキー名定義（hex表記）
+const cookieUserKey = "55736572"; // User
+const cookiePassKey = "70617373776f7264"; // password
 
-window.onload = () => {
-  const userHash = Cookies.get(COOKIE_USER);
-  const passHash = Cookies.get(COOKIE_PASS);
+// ハッシュ化関数
+async function hashText(text) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// クッキー読み取り
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp(name + "=([^;]+)"));
+  return match ? match[1] : null;
+}
+
+// 自動ログイン試行
+window.addEventListener("DOMContentLoaded", async () => {
+  const userHash = getCookie(cookieUserKey);
+  const passHash = getCookie(cookiePassKey);
   if (userHash && passHash) {
-    loginToServer(userHash, passHash, true);
+    try {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userHash, passHash })
+      });
+      const data = await res.json();
+      if (data.code) {
+        loginForm.style.display = "none";
+        registerForm.style.display = "none";
+        codeDisplay.textContent = `2FAコード: ${data.code}`;
+      }
+    } catch (e) {
+      console.error("自動ログイン失敗:", e);
+    }
   }
-};
-
-document.getElementById("login-btn").addEventListener("click", () => {
-  const user = document.getElementById("username").value.trim();
-  const pass = document.getElementById("password").value.trim();
-
-  if (!user || !pass) {
-    alert("両方入れろ");
-    return;
-  }
-
-  const userHash = CryptoJS.SHA256(user).toString();
-  const passHash = CryptoJS.SHA256(pass).toString();
-
-  Cookies.set(COOKIE_USER, userHash, { expires: 1 / 72 });
-  Cookies.set(COOKIE_PASS, passHash, { expires: 1 / 72 });
-
-  loginToServer(userHash, passHash, false);
 });
 
-function loginToServer(userHash, passHash, auto) {
-  fetch("https://your-render-backend.onrender.com/api/login", {
+// ログイン処理
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = document.getElementById("login-username").value;
+  const password = document.getElementById("login-password").value;
+  const userHash = await hashText(username);
+  const passHash = await hashText(password);
+
+  const res = await fetch("/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user: userHash, pass: passHash })
-  })
-    .then(res => res.json())
-    .then(data => {
-      if (data.ok && data.secret) {
-        secret = data.secret;
-        showCodeScreen();
-      } else {
-        if (!auto) alert("ユーザー名またはパスワードが間違っています");
-        Cookies.remove(COOKIE_USER);
-        Cookies.remove(COOKIE_PASS);
-      }
-    })
-    .catch(err => {
-      console.error("通信エラー:", err);
-      alert("サーバーに接続できませんでした");
-    });
-}
+    body: JSON.stringify({ userHash, passHash })
+  });
+  const data = await res.json();
 
-function showCodeScreen() {
-  document.getElementById("login-box").classList.remove("visible");
-  document.getElementById("code-box").classList.add("visible");
+  if (data.code) {
+    document.cookie = `${cookieUserKey}=${userHash}; max-age=1200`;
+    document.cookie = `${cookiePassKey}=${passHash}; max-age=1200`;
+    loginForm.style.display = "none";
+    registerForm.style.display = "none";
+    codeDisplay.textContent = `2FAコード: ${data.code}`;
+  } else {
+    alert("ユーザー名またはパスワードが違います。");
+  }
+});
 
-  const script = document.createElement("script");
-  script.src = "https://cdn.jsdelivr.net/npm/otplib@12.0.1/otplib-browser.min.js";
-  script.onload = startTOTP;
-  document.head.appendChild(script);
-}
+// 新規登録処理
+registerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = document.getElementById("register-username").value;
+  const password = document.getElementById("register-password").value;
+  const secret = document.getElementById("register-secret").value;
 
-function startTOTP() {
-  if (!secret) return;
+  const userHash = await hashText(username);
+  const passHash = await hashText(password);
 
-  if (intervalID) clearInterval(intervalID);
+  const res = await fetch("/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userHash, passHash, secret })
+  });
 
-  intervalID = setInterval(() => {
-    const epoch = Math.floor(Date.now() / 1000);
-    const remaining = 30 - (epoch % 30);
-    const code = otplib.authenticator.generate(secret);
+  const data = await res.json();
 
-    document.getElementById("code").innerText = code;
-    document.getElementById("countdown").innerText = "残り: " + remaining + " 秒";
-  }, 1000);
-}
+  if (data.success) {
+    alert("登録完了。ログインしてください。");
+  } else {
+    alert("登録に失敗しました。既に存在するユーザーかもしれません。");
+  }
+});
